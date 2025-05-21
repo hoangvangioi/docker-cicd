@@ -11,7 +11,7 @@ func main() {
 
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
-			"message": "Hello from Go Web App!",
+			"message": "Hello from Go Web App on Docker!",
 		})
 	})
 
