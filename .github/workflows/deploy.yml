@@ -38,21 +38,50 @@ jobs:
 
     - name: Deploy application
       run: |
-        # Copy binary to EC2
-        scp -i ~/.ssh/go-web-key -o StrictHostKeyChecking=no myapp ec2-user@${{ secrets.EC2_HOST }}:/opt/go-web/
+        # Create systemd service file
+        cat > go-web.service << 'EOL'
+        [Unit]
+        Description=Go Web Application
+        After=network.target
+
+        [Service]
+        Type=simple
+        User=ec2-user
+        WorkingDirectory=/opt/go-web
+        ExecStart=/opt/go-web/myapp
+        Restart=always
+        RestartSec=5
+
+        [Install]
+        WantedBy=multi-user.target
+        EOL
+
+        # Copy binary and service file to EC2
+        scp -i ~/.ssh/go-web-key -o StrictHostKeyChecking=no myapp go-web.service ec2-user@${{ secrets.EC2_HOST }}:/tmp/
         
-        # SSH into EC2 and restart service
+        # SSH into EC2 and setup service
         ssh -i ~/.ssh/go-web-key -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} << 'EOF'
-          # Stop the service
-          sudo systemctl stop go-web
+          # Create application directory
+          sudo mkdir -p /opt/go-web
           
-          # Copy binary to correct location
-          sudo cp /opt/go-web/myapp /opt/go-web/
+          # Copy files to correct locations
+          sudo cp /tmp/myapp /opt/go-web/
+          sudo cp /tmp/go-web.service /etc/systemd/system/
+          
+          # Set correct permissions
           sudo chown ec2-user:ec2-user /opt/go-web/myapp
+          sudo chmod +x /opt/go-web/myapp
+          
+          # Reload systemd and enable service
+          sudo systemctl daemon-reload
+          sudo systemctl enable go-web
           
           # Start the service
           sudo systemctl start go-web
           
           # Check service status
           sudo systemctl status go-web
+          
+          # Clean up
+          rm /tmp/myapp /tmp/go-web.service
         EOF
