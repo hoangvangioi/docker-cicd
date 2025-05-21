@@ -1,0 +1,58 @@
+name: Deploy Go App to EC2
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  AWS_REGION: ap-southeast-1
+  ECR_REPOSITORY: go-web-app
+  EC2_HOST: ${{ secrets.EC2_HOST }}
+  SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.21'
+
+    - name: Build Go application
+      run: |
+        go build -o myapp main.go
+
+    - name: Setup SSH
+      run: |
+        mkdir -p ~/.ssh
+        chmod 700 ~/.ssh
+        echo "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/go-web-key
+        chmod 600 ~/.ssh/go-web-key
+
+    - name: Deploy application
+      run: |
+        # Copy binary to EC2
+        scp -i ~/.ssh/go-web-key -o StrictHostKeyChecking=no myapp ec2-user@${{ secrets.EC2_HOST }}:/opt/go-web/
+        
+        # SSH into EC2 and restart service
+        ssh -i ~/.ssh/go-web-key -o StrictHostKeyChecking=no ec2-user@${{ secrets.EC2_HOST }} << 'EOF'
+          # Stop the service
+          sudo systemctl stop go-web
+          
+          # Copy binary to correct location
+          sudo cp /opt/go-web/myapp /opt/go-web/
+          sudo chown ec2-user:ec2-user /opt/go-web/myapp
+          
+          # Start the service
+          sudo systemctl start go-web
+          
+          # Check service status
+          sudo systemctl status go-web
+        EOF
